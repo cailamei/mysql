@@ -1,0 +1,264 @@
+﻿mysql  參數設置
+   
+      1.  在mysql 配置文件中增加變量的設置，重啟服務對所有session 有效；
+      2.  使用set global 參數名稱=參數值，僅對新建的session 有效，對當前已經存在的session 不生效；
+      3.  使用set session 數名稱=參數值，僅對 本 session 有效；
+總結：虽然设置了global变量、session变量，但是在mysql服务重启之后，数据库的配置又会重新初始化，
+一切按照my.ini的配置进行初始化。global和session的配置都会失效了
+------------------------------------------------------------------------------------------------------    
+      1> skip-slave-start ，從庫啟動時不會啟動複製；
+      2> super_read_only 和read_only  參數的設置的區別
+          
+show variables like '%long_query_time%';set global long_query_time=4;
+
+SELECT * FROM information_schema.tables
+
+SHOW GLOBAL STATUS like 'Key_blocks_unused' 通过SHOW GLOBAL STATUS 时的 Key_blocks_unused来查看,只要还有剩余，就说明 key_buffer_size 没用满
+
+对于使用Myisam存储引擎来说，主要有key_buffer_size和table_cache两个参数。
+查看MySQL参数，可以使用show variables和show status命令查看，前者查看服务器静态参数，即在数据库启动后不会动态更改的值，比如缓冲区、字符集等。后者查看服务器的动态运行状态信息，即数据库运行期间动态变化的信息，比如锁，当前连接数等。
+key_buffer_size这个参数是用来设置索引块（index blocks）缓存的大小，它被所有线程共享，严格说是它决定了数据库索引处理的速度，尤其是索引读的速度。那我们怎么才能知道key_buffer_size的设置是否合理呢，一般可以检查状态值Key_read_requests和Key_reads，比例key_reads / key_read_requests应该尽可能的低，比如1:100，1:1000 ，1:10000
+
+show status like 'key_read%';
+show global status like '%slow%';  
+一共有25629497个索引读取请求，有66071个请求在内存中没有找到直接从硬盘读取索引，计算索引未命中缓存的概率： 
+key_cache_miss_rate ＝ Key_reads / Key_read_requests * 100% =0.27% 
+需要适当加大key_buffer_size 
+
+SHOW STATUS LIKE 'Open%tables';
+Open_tables / Opened_tables >= 0.85
+Open_tables / table_cache <= 0.95
+
+SELECT concat('KILL ',id,';') FROM information_schema.processlist WHERE user='root';
+SELECT concat('KILL ',id,';') FROM information_schema.processlist WHERE user='root' INTO OUTFILE '/tmp/a.txt';
+ source /tmp/a.txt;
+
+show variables like "tmpdir";
+show global status like 'created_tmp%';
+
+show index from qa_iqc_lotstatus_defectpic
+
+desc qa_iqc_lotstatus_defectpic
+
+
+1、查询是否锁表 show OPEN TABLES where In_use > 0;
+
+2、show processlist   查询到相对应的进程===然后可以选择杀死对应的进程  kill    id
+
+补充：
+
+查看正在锁的事务：
+
+SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCKS; 
+
+查看等待锁的事务：
+
+SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCK_WAITS; 
+
+
+连接请求的变量：
+
+  max_connections
+MySQL的最大连接数，增加该值增加mysqld 要求的文件描述符的数量。如果服务器的并发连接请求量比较大，建议调高此值，以增加并行连接数量，当然这建立在机器能支撑的情况下，因为如果连接数越多，介于MySQL会为每个连接提供连接缓冲区，就会开销越多的内存，所以要适当调整该值，不能盲目提高设值。
+
+数值过小会经常出现ERROR 1040: Too many connections错误，可以过’conn%’通配符查看当前状态的连接数量，以定夺该值的大小。
+
+show variables like ‘max_connections’ 最大连接数
+
+show  status like ‘max_used_connections’响应的连接数
+
+mysql> show variables like 'max_connections';
+
++-----------------+-------+
+
+| Variable_name   | Value |
+
++-----------------+-------+
+
+| max_connections | 151   |
+
++-----------------+-------+
+
+1 row in set (0.00 sec)
+
+
+
+mysql> show status like 'max%connections';
+
++----------------------+-------+
+
+| Variable_name        | Value |
+
++----------------------+-------+
+
+| Max_used_connections | 152   |
+
++----------------------+-------+
+
+1 row in set (0.00 sec)
+
+max_used_connections / max_connections * 100% （理想值≈ 85%） 
+
+如果max_used_connections跟max_connections相同 那么就是max_connections设置过低或者超过服务器负载上限了，低于10%则设置过大。
+
+MySQL的max_connections参数用来设置最大连接（用户）数。每个连接MySQL的用户均算作一个连接，max_connections的默认值为100。本文将讲解此参数的详细作用与性能影响。
+
+与max_connections有关的特性
+
+MySQL无论如何都会保留一个用于管理员（SUPER）登陆的连接，用于管理员连接数据库进行维护操作，即使当前连接数已经达到了max_connections。因此MySQL的实际最大可连接数为max_connections+1；
+ 这个参数实际起作用的最大值（实际最大可连接数）为16384，即该参数最大值不能超过16384，即使超过也以16384为准；
+ 增加max_connections参数的值，不会占用太多系统资源。系统资源（CPU、内存）的占用主要取决于查询的密度、效率等；
+ 该参数设置过小的最明显特征是出现”Too many connections”错误；
+
+调整max_connections参数的值
+
+1.在配置文件my.cnf中设置max_connections的值
+
+找到max_connections一行，修改为（如果没有，则自己添加），
+
+上面的1000即该参数的值。
+
+2、实时（临时）修改此参数的值
+
+首先登陆mysql，执行如下命令：
+
+复制代码 代码如下:
+
+
+ [root@www ~]# mysql -uroot -p
+
+
+然后输入MySQL Root的密码。
+查看当前的Max_connections参数值：
+
+复制代码 代码如下:
+
+
+mysql> SELECT @@MAX_CONNECTIONS AS 'Max Connections';
+
+
+设置该参数的值： 
+复制代码 代码如下:
+
+
+mysql> set GLOBAL max_connections=1000;
+
+
+
+
+MySQL MYISAM引擎表锁和行锁详解
+转载weixin_34380296 最后发布于2016-03-15 20:31:51 阅读数 60  收藏
+展开
+MySQL有三种锁：表级锁、行级锁和页面锁。BDB支持页面锁，MyISAM支持表级锁，而innoDB则支持表锁和行级锁。这篇文章主要介绍MYISAM引擎的表锁。
+
+
+
+
+
+表锁分为读锁(read lock)和写锁(write lock)
+
+1. 读锁(read lock)
+
+当一个session给表加读锁，其他session也可以继续读取该表，但所有更新、删除和插入将会阻塞，直到将表解锁。下面是具体步骤：
+session1给myisam_lock表加读锁：
+
+wKioL1boDDaRKW4_AAAGYevYgdQ328.png
+session2可以照常读取myisam_lock表：
+
+wKioL1boDDbSZq1hAAAJg1Kek_U942.png
+session2执行insert语句，被阻塞：
+
+wKiom1boC6vgRFmOAAAFURcSSzA468.png
+session1解锁myisam_lock表：
+
+wKiom1boC6uT4lDfAAAFoawIBMI775.png
+session2中被阻塞的insert操作成功执行：
+
+wKioL1boDDewC6sHAAATEgropAU346.png
+MyISAM引擎在执行select时会自动给相关表加读锁，在执行update、delete和insert时会自动给相关表加写锁。而InnoDB则加行锁。
+
+表级读锁有几点需要特别注意的地方：
+
+①lock表的时候一定要把所有需要访问的表都锁住，因为锁表之后无法访问其他未加锁的表。(InnoDB一样)
+
+②当前session lock表之后，当前session只能读锁住的表，而无法对其进行update、delete和insert操作。(InnoDB一样)
+wKiom1boVUTzORVLAAAjF7ZYLVA782.png
+③同一个表如果在sql语句里面如果出现了N次，那么就要锁定N次，否则会出错。(InnoDB一样)
+
+wKiom1boWuSShhalAAARnjIrwc0762.png
+
+wKioL1boW3DAnA5VAAAa7VVZ-P8294.png
+
+
+
+
+
+2. 写锁(write lock)
+
+
+当一个session给表加写锁，其他session所有读取、更新、删除和插入将会阻塞，直到将表解锁。下面是具体步骤：
+session1给myisam_lock表加写锁：
+
+wKiom1cV-WnD4PPFAAAGdekOq0s561.png
+
+session2对myisam_lock表的查询被阻塞：
+
+wKioL1cV-s7i_4hiAAAEo5LX3Uo738.png
+
+session1解锁myisam_lock表，session2查询出结果：
+
+wKioL1cV-x-AHXaKAAALsxPEN34530.png
+
+lock表的时候一定要把所有需要访问的表都锁住，因为锁表之后无法访问其他未加锁的表。
+
+
+
+
+3. concurrent_insert和local操作(此操作为MyISAM引擎专有，InnoDB无此功能)
+
+
+上面我们说到只要给一个表加了读锁，其他session对该表的写操作将被阻塞。那么有没有办法让其他session也能往里面添加数据呢？
+这里我们可以使用local关键字，语法如下：lock table 表名 read local。这样在当前表被加读锁的时候，可以让其他session往表里添加记录，但需要配合concurrent_insert全局变量使用。
+concurrent_insert属性有三中取值，分别是NEVER(0)、AUTO(1)和ALWAYS(2)，从5.5.3版本开始concurrent_insert参数用枚举值，以前的版本则直接使用对应的数字。他们的含义如下：
+NEVER：加读锁后，不允许其他session并发写入。
+AUTO：加读锁后，在表里没有空洞(就是没有删除过行)的条件下，允许其他session并发写入。
+ALWAYS：加读锁后，允许其他session并发写入。
+
+通过show global variables like '%concurrent_insert%'命令可以查看当前数据库的设置：
+wKioL1b6EHSwjF1iAAAP-W4fn1o969.png
+通过set global concurrent_insert = ALWAYS命令可以改变数据库设置：
+wKioL1b6E2SzjHMZAAAXYfn1yfA789.png
+下面我们在AUTO的条件下进行试验，首先session1用local方式给myisam_lock表加读锁：
+wKiom1b6E0jwPSwxAAAGnmubbSo277.png
+session2可以正常读取，还可以插入数据：
+wKiom1b6FXDxO_b2AAAl5CGbvyE325.png
+但session2插入的数据对session1是不可见的，必须等session1释放锁之后才可见：
+wKioL1b6Fj7BwqBYAAAg8MpdVh0862.png
+
+
+
+
+4. MyISAM引擎锁的调度机制
+MyISAM引擎默认是write lock优先于read lock的，也就是说如果一堆写请求和一堆读请求同时要一张表的锁，那读请求只能在所有的写请求执行完成后才能获得执行机会。这样就会出现一个很大的问题：如果我们在批量更新一张用户表，那么用户登录操作可能会出现长时间阻塞的情况，因为用户登录的读取操作在更新完之前无法访问用户表。
+所以MyISAM最好不要用在那些更新和读取都非常频繁的表里，会造成读取的长时间阻塞。但我们可以用下面的方法来缓解这类问题：
+①使用LOW_PRIORITY、HIGH_PRIORITY和DELAYED关键字。
+语法为：insert [LOW_PRIORITY | HIGH_PRIORITY | DELAYED] into 表名 ...
+执行delete、insert、update、load data和replace的时候可以使用LOW_PRIORITY来降低该更新语句的优先级，让读取操作能够执行。
+执行select和insert的时候可以使用HIGH_PRIORITY来提高该语句的优先级，让读取操作能够执行。
+执行insert和replace的时候可以使用DELAYED让MySQL返回OK状态给客户端，并且修改也是对该session可见的。但并不是已经将数据插入表，而是存储在内存里面等待排队。当能够获得表的写锁再插入。这样的好处是，提高插入的速度，客户端不需要等待太长时间。坏处是，不能返回自动递增的ID，以及系统崩溃时，MySQL还没有来得及插入数据的话，这些数据将会丢失。
+
+②set LOW_PRIORITY_UPDATES = 1。
+让所有支持LOW_PRIORITY选项的语句都默认地按照低优先级来处理。
+③修改MAX_WRITE_LOCK_COUNT变量。
+该变量默认为int最大值，表示当一个表的写锁数量达到设定的值后，就降低写锁的优先级，让读锁有机会执行。
+
+
+
+
+5. 查看表锁的竞争情况
+
+show status like 'table_locks%'
+wKiom1boADLQbZ6EAAAMg2WSYyw108.png
+如果Table_locks_waited很大，则说明表锁竞争很激烈，并发性能低下。
+
+转载于:https://blog.51cto.com/jaeger/1751481

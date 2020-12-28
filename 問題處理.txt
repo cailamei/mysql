@@ -1,0 +1,66 @@
+問題解決：
+
+ 1. 使用excel 生成UUID ？
+      --------------------------------------------------------------------------------
+       1> 建好表 (id 設置varchar,36位，不能設置主鍵)
+       2> 使用excel導入;id 列不設置匹配字段；
+       3> 導入完成，使用如下命令生成uuid(36 位)
+              UPDATE    DB_name   SET    id=   UUID()
+       4>生成uuid 后，可以去除uuid的4個'_' 
+            使用命令:  UPDATE  DB_name   SET  ID = (SELECT REPLACE(ID,'-',''))
+      --------------------------------------------------------------------------------
+
+  2. 查看mysql 是否有鎖表
+
+          mysql查看被?住的表
+查?是否?表
+show OPEN TABLES where In_use > 0;
+
+查看所有?程
+show processlist  /  show full processlist;
+查?到相??的?程===然后 kill id
+?掉指定mysql?接的?程?
+
+查看正在?的事?
+
+SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCKS;
+
+查看等待?的事?
+
+SELECT * FROM INFORMATION_SCHEMA.INNODB_LOCK_WAITS;
+
+查看innodb引擎的?行?信息
+
+show engine innodb status\G;
+
+查看造成死?的sql?句，分析索引情?，然后优化sql?句;
+
+查看服?器??
+
+show status like ‘%lock%’
+
+查看超???：
+
+show variables like ‘%timeout%’;
+
+[Err] 1205 - Lock wait timeout exceeded; try restarting transaction 
+select * from information_schema.innodb_trx;
+
+
+Data source rejected establishment of connection,  message from server: "Too many connections"</
+
+
+
+
+Last_SQL_Error: Error 'You cannot 'ALTER' a log table if logging is enabled' on query. Default database: 'mysql'. Query: 'ALTER TABLE `slow_log`
+CHANGE COLUMN `start_time` `start_time` TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) FIRST'
+
+看來是 MySQL 的 show_query_log 的檢查造成的問題, 先關掉讓他執行過即可, 步驟如下:
+
+SHOW SLAVE STATUS \G # 看問題是什麼
+STOP SLAVE;
+SET GLOBAL slow_query_log = 'OFF'; SET GLOBAL sql_log_bin = 0; # 先關掉
+START SLAVE;
+SHOW SLAVE STATUS \G # 看是否正常啟動了
+SET GLOBAL slow_query_log = 'ON'; SET GLOBAL sql_log_bin = 1; # 改回來
+到此即完成

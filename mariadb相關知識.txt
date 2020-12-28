@@ -1,0 +1,164 @@
+﻿MariaDB
+
+1. mariaDB 基礎知識： 
+-----------------------------------------------------------------------------------------------------------------------------------
+
+      ------mariadb 參數
+                不區分大小寫： lower_case_table_names=1
+                命令查看 mariadb 的版本：mysql -V 或者 select version();
+      
+
+      ------mariaDB 事務
+                事務範圍< insert,update,delete >  
+                SET AUTOCOMMIT=1 开启自动提交
+                SET AUTOCOMMIT=0 禁止自动提交
+                
+
+     ------ master-slave  複製模式,主要工作如下：
+                 
+                   ① . 開啟bin-log 二進制日誌 配合并 需在參數文件 add  server-id;
+                   ②
+                   ③.  配置slave 
+                           mysql  ->change master to
+                                             master_host='10.xx.xx.xx',
+                                             master_port=xxxx,
+                                             master_user='xxx',
+                         
+                 1.logbin-format=statement 基於sql 語句的複製SBR
+                 2.logbin-format=mixed      基於行的複製  MBR
+                 3.logbin-format=row    混合模式複製   RBR
+                 4.start slave 時報錯1200：the server is not configured as slave;fix config file ...  (查看my.ini 的位置，需在data 文件夾下)
+
+     ------查看所有的procedure （show  procedure status）
+
+     ------查看所有的events   （SELECT * FROM mysql.event; ）、（進入數據庫，show events）
+               
+
+2. mariaDB 備份
+-----------------------------------------------------------------------------------------------------------------------------------
+             1. 使用自帶工具 mysqldump 備份，細節如下：(默認只導出數據庫結構和數據)
+                   
+                   ①  只導出庫表結構  mysql -uroot -p  -d   
+                   ②  只導出庫數據 而不添加create table 語句 mysql -uroot -p  -t
+                   ③  只導出數據，而不添加create database 語句 mysql -uroot -p -n
+                   ④  導出存儲過程和自定義函數  mysql -uroot -p -R
+                   ⑤  導出事件 mysql -uroot -p -E
+                   ⑥  同時不導出結構和數據 mysql -uroot -p -ntd
+                   ⑦  導出所有 mysql -uroot -p -R -E
+                   ⑧  只導出表結構 和函數&事件&觸發器， 使用 mysql -uroot -p -R -E -d
+               
+                   
+                           1>     備份：mysqldump -uroot -p --all-databases  --lock-all-tables【--single-transaction(熱備)】 --flush-logs  --master-data=2
+
+     ------ 恢復：使用source /root/a/test.sql 恢復數據庫；使用mysql -uroot -p < ./a/test.sql ;
+  shell 備份腳本：
+
+          echo "start        === `date`" >> /root/run/DailyBackup.log
+          export  LC_ALL=en_US.UTF-8 （臨時設定編碼）
+          BAKDATE=`date +%A`  （星期）（%B 月名 , %Y 年份）
+          cd /root/run/ftp
+          mysqldump -hlocalhost -uroot -pFoxconn123 redmine > redminedb_$BAKDATE.sql
+          mysqldump -hlocalhost -uroot -pFoxconn123 gitlabhq_production > gitlabhq_production_$BAKDATE.sql
+          ping -c 30 127.0.0.1 > /dev/null (linux 下的ping 不會自動終止，需要強制停止，或者用參數-c 指定要求完成的回應次數)
+          cp redminedb_$BAKDATE.sql /root/run/
+          cp gitlabhq_production_$BAKDATE.sql /root/run/
+          echo "ftp          === `date`" >> /root/run/DailyBackup.log
+          ftp -n <<!   （限制FTP 自動登錄）
+          open 10.134.103.136
+          user ftpuser ftpuser
+          lcd /root/run/ftp （指定要更改的本地计算机上的工作目录）
+          cd /redmine_10.67.48.99   （指定要更改的远程计算机上的工作目录）
+          bin（ 设置文件传输方式为二进制模式）
+          hash（显示#表示下载进度）
+          prompt （关闭交互模式）
+          mput redminedb_*.sql  （複製一個或者多個本地文件到遠程）
+          mput gitlabhq_production_*.sql
+          bye
+          !
+          rm -f /root/run/ftp/redminedb_*.sql
+          rm -f /root/run/ftp/gitlabhq_production_*.sql
+          echo "run finished === `date`" >> /root/run/DailyBackup.log
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+linux 定時任務
+
+               crontab -e   設置定時任務
+               #30    7    18      1                         *          sh /root/run/fullbackup.sh
+                  分    時 幾號   1月     星期（1,2,3,4,5,6,0)
+
+windows 備份腳本
+                 set LC_ALL=en_US.UTF-8
+                 set year=%DATE:~10,4%
+                 set month=%DATE:~4,2%
+                 set day=%DATE:~7,2%
+
+                 cd \run
+                 echo "start full backup    === %DATE%" >> DailyBackup.log
+                 mysqldump -hlocalhost -uroot -pmysql --flush-logs --all-databases --master-data=2 > all_databases_%year%-%month%-%day%.sql
+
+                 mysql -hlocalhost -uroot -pmysql -e 'show master status;' >> DailyBackup.log
+
+                 echo "full backup finished === %DATE%" >> DailyBackup.log
+
+Windows 定時任務
+                   
+                   schtasks 查看所有定時任務
+                   schtasks /Delete   /tn 任務名稱    （刪除定時任務）
+                   schtasks 報錯時可以使用 chcp 命令查看cmd 編碼950 和437（美國編碼）
+
+
+ yum -y instal MariaDB.Service
+
+
+
+mysqlcheck.exe -r mydatabase -uroot -pmypassword -h127.0.0.1   一次性修復DB 所有的表
+
+
+mysqlcheck.exe -r mydatabase mytable -uroot -pmypassword -h127.0.0.1 修復DB 的部分表
+
+mysqlcheck -uroot -pFoxconn123 information_schema -c
+
+
+在检查、修复表，除了用myisamchk，还可以用check table、repair table来完成，下面来总结下
+
+1.检查表是否有错误
+CHECK TABLE对MyISAM和InnoDB表有作用。对于MyISAM表，关键字统计信息会被更新，CHECK TABLE也可以检查视图是否有错误，
+比如在视图定义中被引用的表已不存在。
+
+ 
+
+一些只对myisam表有作用(对innodb和视图无效)的选项介绍：
+QUICK：不扫描行，不检查错误的链接。
+FAST：只检查没有被正确关闭的表。
+CHANGED：只检查自上次检查后被更改的表，和没有被正确关闭的表。
+MEDIUM：扫描行，以验证被删除的链接是有效的。也可以计算各行的关键字校验和，并使用计算出的校验和验证这一点。
+EXTENDED：对每行的所有关键字进行一个全面的关键字查找。这可以确保表是100％一致的，但是花的时间较长，所以很少使用。
+
+ 
+
+常用的全面常规检查 
+mysql> check table t1 medium;
+等价
+# myisamchk --medium-check tablename
+
+快速检查没有被正确关闭的表
+mysql> check table t1 quick fast;
+
+ 
+
+2.修复有错误的表
+REPAIR TABLE用于修复被破坏的表。
+默认情况下，REPAIR TABLE与myisamchk --recover tbl_name具有相同的效。
+REPAIR TABLE对MyISAM和ARCHIVE表起作用
+
+ 
+
+语法如下：
+REPAIR [LOCAL | NO_WRITE_TO_BINLOG] TABLE    tbl_name [, tbl_name] ... [QUICK] [EXTENDED] [USE_FRM]
+
+ 
+
+quick：repair只修复索引，等价于“myisamchk --recover --quick tablename”
+extended：MySQL会一行一行地创建索引行，等价于”myisamchk --safe-recover tablename“
+use_frm:如果.MYI索引文件缺失或标题被破坏，则使用此选项，用来自.frm文件重新创建.MYI文件。这种修复不能使用myisamchk来完成；在repair常规无法完成时，才会使用这个选项，如果表被压缩不能使用。
+
+no_write_to_binlog:repair默认是写到二进制文件的，如果有主从模式的话，repair也会在从库执行；使用此选项将会禁止写入到二进制文件中。

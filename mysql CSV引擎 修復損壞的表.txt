@@ -1,0 +1,77 @@
+mysql engine=csv
+
+CSV存储引擎是基于CSV格式文件存储数据的。
+
+建立CSV存储引擎的表
+mysql> create table table_csv(id int notnull ,name varchar(10) not null) engine=csv;Query OK, 0 rows affected (0.00 sec)
+
+插入数据测试一下：
+
+mysql> insert into table_csv values(1,'a');Query OK, 1 row affected (0.00 sec) 
+mysql> insert into table_csvvalues(2,'b');Query OK, 1 row affected (0.00 sec)
+mysql> select * from table_csv;
+		| id | name |
+		|  1 | a    |
+		|  2 | b    |
+		2 rows in set (0.00 sec)
+
+查看创建的table_csv的数据文件(有三个文件)：(注：.CSM是表状态及表的数据量文件； .CSV是存放数据文件； .frm是表结构定义文件)
+
+[root@localhost test]# ll
+-rw-rw---- 1 mysql mysql   35 Sep  1 14:29  table_csv.CSM
+-rw-rw---- 1 mysql mysql   18 Sep  1 14:38  table_csv.CSV
+-rw-rw---- 1 mysql mysql 8582 Sep  1 14:28  table_csv.frm
+
+向CSV文件插入数据，再查询表数据
+既然是CSV格式的文件，那么就打开看看吧：
+[root@localhost test]# more table_csv.CSV
+1,"a"
+2,"b"
+
+试着编辑一下CSV文件，加一行3,"c" ：
+[root@localhost test]# vim table_csv.CSV
+1,"a"
+2,"b"
+3,"c"
+
+再次查看table_csv.表，看看情况如何：
+mysql> select * from table_csv;
+| id | name |
+|  1 | a    |
+|  2 | b    |
+2 rows in set (0.00 sec
+
+貌似没有变化，检查和修复一下table_csv表：
+
+检查：
+mysql> check table table_csv;
++----------------+-------+----------+----------+
+| Table          | Op    | Msg_type | Msg_text |
++----------------+-------+----------+----------+
+| test.table_csv |check  | error    | Corrupt  |
++----------------+-------+----------+----------+
+1 row in set (0.00 sec)
+
+修复：
+
+注意：修复时，如果发现文件中有损坏的记录行，那之后的数据也要全部丢失了
+
+mysql> repair table table_csv;
++----------------+--------+----------+----------+
+| Table          | Op     | Msg_type | Msg_text |
++----------------+--------+----------+----------+
+| test.table_csv | repair | status   | OK       |
++----------------+--------+----------+----------+
+1 row in set (0.00 sec
+
+再次查询table_csv表，有新增的数据了：
+
+mysql> select * from table_csv;
++----+----+
+| id | name |
++----+----+
+|  1 | a    |
+|  2 | b    |
+|  3 | c    |
++----+----+
+3 rows in set (0.01 sec)
